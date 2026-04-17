@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0d14" />
+  <title>FRC Shot Cadence Tracker</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='80' font-size='80'%3E%E2%9A%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="header-title">
+        <div class="header-icon">⚙️</div>
+        <div>
+          <h1>Shot Cadence Tracker</h1>
+          <p>FRC Robot · Cadência de tiros</p>
+        </div>
+      </div>
+      <span class="header-badge">Live · Realtime sync</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h2>Meça e otimize a cadência do seu robô</h2>
+    <p>Faça upload de vídeos curtos, registre tempos e quantidades, e descubra automaticamente qual configuração entrega o melhor BPS.</p>
+  </section>
+
+  <main>
+    <!-- ADD SAMPLE FORM -->
+    <section class="card" id="add-section">
+      <div class="card-header">
+        <div class="card-header-icon">＋</div>
+        <h2>Nova Amostra</h2>
+      </div>
+
+      <form id="sample-form" novalidate>
+        <div class="form-layout">
+
+          <!-- VIDEO UPLOAD -->
+          <div class="upload-col">
+            <label class="field-label">Vídeo</label>
+            <div class="upload-area" id="upload-area">
+              <input type="file" id="video-input" accept="video/*" hidden />
+              <div id="upload-placeholder">
+                <div class="upload-icon">📹</div>
+                <span>Clique ou arraste um vídeo</span>
+                <span class="upload-hint">MP4, MOV, AVI · até 200 MB</span>
+              </div>
+              <video id="video-preview" controls playsinline></video>
+            </div>
+            <button type="button" id="remove-video" class="btn-remove">✕ Remover vídeo</button>
+            <div class="progress-bar-wrap" id="progress-wrap">
+              <div class="progress-bar" id="progress-bar"></div>
+              <span id="progress-label">0%</span>
+            </div>
+          </div>
+
+          <!-- FORM FIELDS -->
+          <div class="fields-col">
+
+            <div class="row-2">
+              <div class="field">
+                <label class="field-label" for="shoot-time">Tempo de tiro (s)</label>
+                <input type="number" id="shoot-time" step="0.01" min="0.01" placeholder="ex: 5.00" />
+              </div>
+              <div class="field">
+                <label class="field-label" for="ball-count">Nº de bolas</label>
+                <input type="number" id="ball-count" min="1" placeholder="ex: 10" />
+              </div>
+            </div>
+
+            <div class="bps-banner">
+              <div class="bps-banner-text">
+                <span class="bps-label">BPS · Calculado em tempo real</span>
+                <span class="bps-sub">Bolas por segundo desta amostra</span>
+              </div>
+              <span class="bps-value" id="bps-live">—</span>
+              <span class="bps-unit">bolas/s</span>
+            </div>
+
+            <div class="row-2">
+              <div class="field">
+                <label class="field-label" for="reduction">Redução</label>
+                <select id="reduction">
+                  <option value="">Selecione...</option>
+                  <option value="3:1">3:1</option>
+                  <option value="4:1">4:1</option>
+                  <option value="5:1">5:1</option>
+                  <option value="6:1">6:1</option>
+                  <option value="7:1">7:1</option>
+                  <option value="8:1">8:1</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="motor">Motor</label>
+                <select id="motor">
+                  <option value="">Selecione...</option>
+                  <option value="Vortex">Vortex</option>
+                  <option value="Kraken">Kraken</option>
+                  <option value="2x Vortex">2x Vortex</option>
+                  <option value="2x Kraken">2x Kraken</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="mech-notes">Alterações mecânicas</label>
+              <textarea id="mech-notes" rows="3" placeholder="Descreva alterações mecânicas relevantes desta amostra..."></textarea>
+            </div>
+
+            <button type="submit" class="btn-primary" id="submit-btn">
+              <span id="btn-text">Adicionar Amostra</span>
+              <span id="btn-spinner" class="spinner" hidden></span>
+            </button>
+
+            <p class="form-error" id="form-error"></p>
+          </div>
+
+        </div>
+      </form>
+    </section>
+
+    <!-- GROUPS -->
+    <section id="groups-section">
+      <div class="section-header">
+        <div class="section-title">
+          <h2>Configurações</h2>
+          <span class="section-title-count" id="groups-count">0</span>
+        </div>
+        <div class="filter-bar">
+          <select id="filter-motor">
+            <option value="">Todos os motores</option>
+            <option value="Vortex">Vortex</option>
+            <option value="Kraken">Kraken</option>
+            <option value="2x Vortex">2x Vortex</option>
+            <option value="2x Kraken">2x Kraken</option>
+          </select>
+          <select id="filter-reduction">
+            <option value="">Todas as reduções</option>
+            <option value="3:1">3:1</option>
+            <option value="4:1">4:1</option>
+            <option value="5:1">5:1</option>
+            <option value="6:1">6:1</option>
+            <option value="7:1">7:1</option>
+            <option value="8:1">8:1</option>
+          </select>
+        </div>
+      </div>
+      <div id="groups-container">
+        <div class="empty-state">
+          <div class="empty-state-icon">⏳</div>
+          <p>Carregando amostras...</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Open source · Feito para equipes FRC ·
+    <a href="https://github.com/brunoUC/frc-shot-cadence-tracker" target="_blank" rel="noopener">GitHub</a>
+  </footer>
+
+  <!-- VIDEO MODAL -->
+  <div id="video-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-box">
+      <button class="modal-close" id="modal-close" aria-label="Fechar">✕</button>
+      <video id="modal-video" controls playsinline></video>
+    </div>
+  </div>
+
+  <!-- DELETE CONFIRM MODAL -->
+  <div id="delete-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="delete-backdrop"></div>
+    <div class="modal-box modal-small">
+      <h3>Excluir amostra?</h3>
+      <p>Esta ação não pode ser desfeita. O vídeo também será removido.</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="delete-cancel">Cancelar</button>
+        <button class="btn-danger" id="delete-confirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
