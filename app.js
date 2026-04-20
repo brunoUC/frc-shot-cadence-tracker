@@ -26,9 +26,10 @@ const progressLabel = document.getElementById('progress-label');
 const shootTime   = document.getElementById('shoot-time');
 const ballCount   = document.getElementById('ball-count');
 const bpsLive     = document.getElementById('bps-live');
-const reduction   = document.getElementById('reduction');
-const motor       = document.getElementById('motor');
-const mechNotes   = document.getElementById('mech-notes');
+const reduction    = document.getElementById('reduction');
+const motor        = document.getElementById('motor');
+const currentLimit = document.getElementById('current-limit');
+const mechNotes    = document.getElementById('mech-notes');
 
 const sampleForm  = document.getElementById('sample-form');
 const submitBtn   = document.getElementById('submit-btn');
@@ -184,6 +185,7 @@ sampleForm.addEventListener('submit', async e => {
 
   const bps  = parseFloat((b / t).toFixed(4));
   const notes = mechNotes.value.trim();
+  const curLim = currentLimit.value !== '' ? parseFloat(currentLimit.value) : null;
 
   setLoading(true);
 
@@ -211,6 +213,7 @@ sampleForm.addEventListener('submit', async e => {
         bps,
         reduction: red,
         motor:     mot,
+        currentLimit: curLim,
         notes,
         videoURL,
         storagePath,
@@ -239,6 +242,7 @@ sampleForm.addEventListener('submit', async e => {
         bps,
         reduction:   red,
         motor:       mot,
+        currentLimit: curLim,
         notes,
         videoURL,
         storagePath,
@@ -268,11 +272,12 @@ function startEdit(sample) {
   editingVideoURL    = sample.videoURL ?? null;
   replaceVideo       = false;
 
-  shootTime.value = sample.shootTime ?? '';
-  ballCount.value = sample.ballCount ?? '';
-  reduction.value = sample.reduction ?? '';
-  motor.value     = sample.motor ?? '';
-  mechNotes.value = sample.notes ?? '';
+  shootTime.value    = sample.shootTime ?? '';
+  ballCount.value    = sample.ballCount ?? '';
+  reduction.value    = sample.reduction ?? '';
+  motor.value        = sample.motor ?? '';
+  currentLimit.value = sample.currentLimit ?? '';
+  mechNotes.value    = sample.notes ?? '';
   calcBPS();
 
   // show existing video in preview area (not selected for re-upload unless user picks a new one)
@@ -462,6 +467,7 @@ function buildSampleItem(s) {
         <span class="stat-chip bps"><strong>${s.bps?.toFixed(2)}</strong> bps</span>
         <span class="stat-chip"><strong>${s.ballCount}</strong> bolas</span>
         <span class="stat-chip"><strong>${s.shootTime}s</strong></span>
+        ${s.currentLimit != null ? `<span class="stat-chip current"><strong>${s.currentLimit}A</strong> limite</span>` : ''}
       </div>
       ${s.notes ? `<p class="sample-notes" title="${s.notes}">📝 ${s.notes}</p>` : ''}
       <span class="sample-date">${date}</span>

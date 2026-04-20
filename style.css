@@ -885,6 +885,13 @@ select option { background: var(--bg-2); color: var(--text); }
 }
 .stat-chip.bps strong { color: var(--accent); }
 
+.stat-chip.current {
+  background: var(--orange-soft);
+  border-color: rgba(249,115,22,0.3);
+  color: var(--orange);
+}
+.stat-chip.current strong { color: var(--orange); }
+
 .sample-notes {
   font-size: 0.78rem;
   color: var(--text-3);
