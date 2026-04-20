@@ -39,6 +39,7 @@ const formError   = document.getElementById('form-error');
 
 const filterMotor     = document.getElementById('filter-motor');
 const filterReduction = document.getElementById('filter-reduction');
+const filterCurrent   = document.getElementById('filter-current');
 const groupsContainer = document.getElementById('groups-container');
 const groupsCount     = document.getElementById('groups-count');
 
@@ -360,15 +361,37 @@ onSnapshot(collection(db, 'samples'), snap => {
 
 filterMotor.addEventListener('change', renderGroups);
 filterReduction.addEventListener('change', renderGroups);
+filterCurrent.addEventListener('change', renderGroups);
+
+function rebuildCurrentFilter() {
+  const unique = [...new Set(
+    allSamples
+      .map(s => s.currentLimit)
+      .filter(v => v != null)
+  )].sort((a, b) => a - b);
+
+  const prev = filterCurrent.value;
+  filterCurrent.innerHTML =
+    '<option value="">Todas as correntes</option>' +
+    unique.map(v => `<option value="${v}">${v} A</option>`).join('') +
+    '<option value="none">Sem limite</option>';
+  if ([...filterCurrent.options].some(o => o.value === prev)) filterCurrent.value = prev;
+}
 
 function renderGroups() {
+  rebuildCurrentFilter();
+
   const fm = filterMotor.value;
   const fr = filterReduction.value;
+  const fc = filterCurrent.value;
 
-  let samples = allSamples.filter(s =>
-    (!fm || s.motor === fm) &&
-    (!fr || s.reduction === fr)
-  );
+  let samples = allSamples.filter(s => {
+    if (fm && s.motor !== fm) return false;
+    if (fr && s.reduction !== fr) return false;
+    if (fc === 'none') return s.currentLimit == null;
+    if (fc) return String(s.currentLimit) === fc;
+    return true;
+  });
 
   // sort by creation date newest first
   samples.sort((a, b) => {
@@ -387,11 +410,17 @@ function renderGroups() {
     return;
   }
 
-  // Group by motor + reduction
+  // Group by motor + reduction + currentLimit
   const groups = {};
   for (const s of samples) {
-    const key = `${s.motor}__${s.reduction}`;
-    if (!groups[key]) groups[key] = { motor: s.motor, reduction: s.reduction, items: [] };
+    const curKey = s.currentLimit != null ? s.currentLimit : 'none';
+    const key = `${s.motor}__${s.reduction}__${curKey}`;
+    if (!groups[key]) groups[key] = {
+      motor: s.motor,
+      reduction: s.reduction,
+      currentLimit: s.currentLimit ?? null,
+      items: []
+    };
     groups[key].items.push(s);
   }
 
@@ -420,12 +449,17 @@ function buildGroupCard(group, rank) {
 
   const rankDisplay = rank === 1 ? '🏆' : `#${rank}`;
 
+  const currentTag = group.currentLimit != null
+    ? `<span class="tag tag-current">🔌 ${group.currentLimit}A</span>`
+    : `<span class="tag tag-current tag-muted">🔌 sem limite</span>`;
+
   card.innerHTML = `
     <div class="group-header">
       <div class="group-rank">${rankDisplay}</div>
       <div class="group-tags">
         <span class="tag tag-motor">⚡ ${group.motor}</span>
         <span class="tag tag-reduction">⚙ ${group.reduction}</span>
+        ${currentTag}
       </div>
       <span class="group-count">${count} amostra${count !== 1 ? 's' : ''}</span>
       <div class="group-avg">
@@ -467,7 +501,6 @@ function buildSampleItem(s) {
         <span class="stat-chip bps"><strong>${s.bps?.toFixed(2)}</strong> bps</span>
         <span class="stat-chip"><strong>${s.ballCount}</strong> bolas</span>
         <span class="stat-chip"><strong>${s.shootTime}s</strong></span>
-        ${s.currentLimit != null ? `<span class="stat-chip current"><strong>${s.currentLimit}A</strong> limite</span>` : ''}
       </div>
       ${s.notes ? `<p class="sample-notes" title="${s.notes}">📝 ${s.notes}</p>` : ''}
       <span class="sample-date">${date}</span>

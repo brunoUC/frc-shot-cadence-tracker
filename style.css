@@ -750,6 +750,18 @@ select option { background: var(--bg-2); color: var(--text); }
   border: 1px solid rgba(249,115,22,0.3);
 }
 
+.tag-current {
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid rgba(16,185,129,0.3);
+}
+
+.tag-muted {
+  background: var(--bg-1);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
 .group-count {
   font-size: 0.76rem;
   color: var(--text-2);
