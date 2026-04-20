@@ -1,6 +1,6 @@
 // ── Firebase SDK (CDN modules) ──────────────────────────────────
 import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, collection, addDoc,
+import { getFirestore, collection, addDoc, updateDoc,
          deleteDoc, doc, onSnapshot,
          serverTimestamp }         from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getStorage, ref as storageRef,
@@ -67,6 +67,29 @@ let selectedFile   = null;
 let allSamples     = [];
 let pendingDeleteId = null;
 let pendingDeleteStoragePath = null;
+let editingId = null;              // when set, submit does update instead of add
+let editingStoragePath = null;     // existing video path of the sample being edited
+let editingVideoURL = null;        // existing video url of the sample being edited
+let replaceVideo = false;          // true if user picked a new video during edit
+
+// Refs for edit UI (dynamically added below)
+const cardHeader   = document.querySelector('#add-section .card-header');
+const addSection   = document.getElementById('add-section');
+
+// Title + icon inside card header so we can swap "Nova Amostra" ↔ "Editando Amostra"
+const cardHeaderTitle = cardHeader.querySelector('h2');
+const cardHeaderIcon  = cardHeader.querySelector('.card-header-icon');
+
+// Build a cancel-edit button, injected into the card header, shown only while editing
+const cancelEditBtn = document.createElement('button');
+cancelEditBtn.type = 'button';
+cancelEditBtn.className = 'btn-secondary';
+cancelEditBtn.id = 'cancel-edit-btn';
+cancelEditBtn.textContent = '✕ Cancelar edição';
+cancelEditBtn.style.marginLeft = 'auto';
+cancelEditBtn.hidden = true;
+cardHeader.appendChild(cancelEditBtn);
+cancelEditBtn.addEventListener('click', cancelEdit);
 
 // ── BPS live calc ───────────────────────────────────────────────
 function calcBPS() {
@@ -109,14 +132,29 @@ function setVideoFile(file) {
     return;
   }
   selectedFile         = file;
+  if (editingId) replaceVideo = true;   // user chose a new video during edit
   uploadPH.style.display    = 'none';
   videoPreview.style.display = 'block';
   removeBtn.style.display    = 'block';
+  removeBtn.textContent     = editingId ? '↺ Reverter vídeo' : '✕ Remover vídeo';
   videoPreview.src = URL.createObjectURL(file);
 }
 
 removeBtn.addEventListener('click', e => {
   e.stopPropagation();
+  if (editingId && replaceVideo) {
+    // revert to original video (don't replace)
+    replaceVideo = false;
+    selectedFile = null;
+    videoInput.value = '';
+    if (editingVideoURL) {
+      videoPreview.src = editingVideoURL;
+      removeBtn.textContent = '🔄 Substituir vídeo';
+    } else {
+      clearVideoSelection();
+    }
+    return;
+  }
   clearVideoSelection();
 });
 
@@ -150,31 +188,68 @@ sampleForm.addEventListener('submit', async e => {
   setLoading(true);
 
   try {
-    let videoURL      = null;
-    let storagePath   = null;
+    if (editingId) {
+      // ── UPDATE existing sample ───────────────────────────────
+      let videoURL    = editingVideoURL;
+      let storagePath = editingStoragePath;
 
-    if (selectedFile) {
-      const path   = `videos/${Date.now()}_${selectedFile.name}`;
-      storagePath  = path;
-      videoURL     = await uploadVideo(selectedFile, path);
+      if (replaceVideo && selectedFile) {
+        // upload new video, delete old one afterwards
+        const path  = `videos/${Date.now()}_${selectedFile.name}`;
+        const newURL = await uploadVideo(selectedFile, path);
+        // best-effort delete of old file
+        if (editingStoragePath) {
+          try { await deleteObject(storageRef(stor, editingStoragePath)); } catch {}
+        }
+        storagePath = path;
+        videoURL    = newURL;
+      }
+
+      await updateDoc(doc(db, 'samples', editingId), {
+        shootTime: t,
+        ballCount: b,
+        bps,
+        reduction: red,
+        motor:     mot,
+        notes,
+        videoURL,
+        storagePath,
+        updatedAt: serverTimestamp()
+      });
+
+      toast('Amostra atualizada!');
+      exitEditMode();
+      sampleForm.reset();
+      clearVideoSelection();
+      bpsLive.textContent = '—';
+    } else {
+      // ── CREATE new sample ────────────────────────────────────
+      let videoURL    = null;
+      let storagePath = null;
+
+      if (selectedFile) {
+        const path   = `videos/${Date.now()}_${selectedFile.name}`;
+        storagePath  = path;
+        videoURL     = await uploadVideo(selectedFile, path);
+      }
+
+      await addDoc(collection(db, 'samples'), {
+        shootTime:   t,
+        ballCount:   b,
+        bps,
+        reduction:   red,
+        motor:       mot,
+        notes,
+        videoURL,
+        storagePath,
+        createdAt:   serverTimestamp()
+      });
+
+      toast('Amostra adicionada!');
+      sampleForm.reset();
+      clearVideoSelection();
+      bpsLive.textContent = '—';
     }
-
-    await addDoc(collection(db, 'samples'), {
-      shootTime:   t,
-      ballCount:   b,
-      bps,
-      reduction:   red,
-      motor:       mot,
-      notes,
-      videoURL,
-      storagePath,
-      createdAt:   serverTimestamp()
-    });
-
-    toast('Amostra adicionada!');
-    sampleForm.reset();
-    clearVideoSelection();
-    bpsLive.textContent = '—';
   } catch (err) {
     console.error(err);
     toast('Erro ao salvar: ' + err.message, 'error');
@@ -185,6 +260,65 @@ sampleForm.addEventListener('submit', async e => {
     progressLabel.textContent = '0%';
   }
 });
+
+// ── Edit mode helpers ──────────────────────────────────────────
+function startEdit(sample) {
+  editingId          = sample.id;
+  editingStoragePath = sample.storagePath ?? null;
+  editingVideoURL    = sample.videoURL ?? null;
+  replaceVideo       = false;
+
+  shootTime.value = sample.shootTime ?? '';
+  ballCount.value = sample.ballCount ?? '';
+  reduction.value = sample.reduction ?? '';
+  motor.value     = sample.motor ?? '';
+  mechNotes.value = sample.notes ?? '';
+  calcBPS();
+
+  // show existing video in preview area (not selected for re-upload unless user picks a new one)
+  selectedFile = null;
+  videoInput.value = '';
+  if (sample.videoURL) {
+    uploadPH.style.display      = 'none';
+    videoPreview.style.display  = 'block';
+    videoPreview.src            = sample.videoURL;
+    removeBtn.style.display     = 'block';
+    removeBtn.textContent       = '🔄 Substituir vídeo';
+  } else {
+    clearVideoSelection();
+  }
+
+  cardHeaderTitle.textContent = 'Editando Amostra';
+  cardHeaderIcon.textContent  = '✏️';
+  btnText.textContent         = 'Salvar alterações';
+  cancelEditBtn.hidden        = false;
+  addSection.classList.add('editing');
+
+  // scroll to form
+  addSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function exitEditMode() {
+  editingId          = null;
+  editingStoragePath = null;
+  editingVideoURL    = null;
+  replaceVideo       = false;
+
+  cardHeaderTitle.textContent = 'Nova Amostra';
+  cardHeaderIcon.textContent  = '＋';
+  btnText.textContent         = 'Adicionar Amostra';
+  removeBtn.textContent       = '✕ Remover vídeo';
+  cancelEditBtn.hidden        = true;
+  addSection.classList.remove('editing');
+}
+
+function cancelEdit() {
+  exitEditMode();
+  sampleForm.reset();
+  clearVideoSelection();
+  bpsLive.textContent = '—';
+  formError.textContent = '';
+}
 
 function setLoading(on) {
   submitBtn.disabled  = on;
@@ -334,6 +468,7 @@ function buildSampleItem(s) {
     </div>
     <div class="sample-actions">
       ${s.videoURL ? `<button class="btn-icon" data-play="${s.videoURL}" title="Assistir">▶</button>` : ''}
+      <button class="btn-icon" data-edit="${s.id}" title="Editar">✏️</button>
       <button class="btn-icon danger" data-delete="${s.id}" data-path="${s.storagePath ?? ''}" title="Excluir">🗑</button>
     </div>
   `;
@@ -346,6 +481,10 @@ function buildSampleItem(s) {
   const playBtn = li.querySelector('[data-play]');
   if (playBtn) playBtn.addEventListener('click', () => openVideoModal(s.videoURL));
 
+  // edit button
+  const editBtn = li.querySelector('[data-edit]');
+  if (editBtn) editBtn.addEventListener('click', () => startEdit(s));
+
   // delete button
   const delBtn = li.querySelector('[data-delete]');
   if (delBtn) {
@@ -355,6 +494,9 @@ function buildSampleItem(s) {
       deleteModal.hidden       = false;
     });
   }
+
+  // highlight if this sample is currently being edited
+  if (editingId === s.id) li.classList.add('editing-sample');
 
   return li;
 }
