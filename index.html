@@ -29,11 +29,19 @@
   </header>
 
   <section class="hero">
-    <h2>Meça e otimize a cadência do seu robô</h2>
-    <p>Faça upload de vídeos curtos, registre tempos e quantidades, e descubra automaticamente qual configuração entrega o melhor BPS.</p>
+    <h2 id="hero-title">Meça e otimize a cadência do seu robô</h2>
+    <p id="hero-desc">Faça upload de vídeos curtos, registre tempos e quantidades, e descubra automaticamente qual configuração entrega o melhor BPS.</p>
   </section>
 
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="cadence" role="tab">⚡ Cadência de Tiros</button>
+    <button class="tab" data-tab="auto" role="tab">🤖 Autônomo</button>
+  </nav>
+
   <main>
+    <!-- ═══════════ TAB: CADENCE ═══════════ -->
+    <div id="tab-cadence" class="tab-panel active">
+
     <!-- ADD SAMPLE FORM -->
     <section class="card" id="add-section">
       <div class="card-header">
@@ -174,6 +182,125 @@
         </div>
       </div>
     </section>
+
+    </div><!-- /tab-cadence -->
+
+    <!-- ═══════════ TAB: AUTO ═══════════ -->
+    <div id="tab-auto" class="tab-panel">
+
+      <!-- AUTO FORM -->
+      <section class="card" id="auto-add-section">
+        <div class="card-header">
+          <div class="card-header-icon" id="auto-card-icon">＋</div>
+          <h2 id="auto-card-title">Novo Autônomo</h2>
+        </div>
+
+        <form id="auto-form" novalidate>
+          <div class="form-layout">
+
+            <!-- VIDEO UPLOAD -->
+            <div class="upload-col">
+              <label class="field-label">Vídeo</label>
+              <div class="upload-area" id="auto-upload-area">
+                <input type="file" id="auto-video-input" accept="video/*" hidden />
+                <div id="auto-upload-placeholder">
+                  <div class="upload-icon">📹</div>
+                  <span>Clique ou arraste um vídeo</span>
+                  <span class="upload-hint">MP4, MOV, AVI · até 200 MB</span>
+                </div>
+                <video id="auto-video-preview" controls playsinline></video>
+              </div>
+              <button type="button" id="auto-remove-video" class="btn-remove">✕ Remover vídeo</button>
+              <div class="progress-bar-wrap" id="auto-progress-wrap">
+                <div class="progress-bar" id="auto-progress-bar"></div>
+                <span id="auto-progress-label">0%</span>
+              </div>
+            </div>
+
+            <!-- FORM FIELDS -->
+            <div class="fields-col">
+
+              <div class="row-2">
+                <div class="field">
+                  <label class="field-label" for="auto-type">Tipo de autônomo</label>
+                  <select id="auto-type">
+                    <option value="">Selecione...</option>
+                    <option value="Double sweep">Double sweep</option>
+                    <option value="Double sweep climb">Double sweep climb</option>
+                    <option value="Depot">Depot</option>
+                    <option value="Center">Center</option>
+                    <option value="__custom__">Outro...</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field-label" for="auto-side">Lado</label>
+                  <select id="auto-side">
+                    <option value="">Selecione...</option>
+                    <option value="Direita">Direita</option>
+                    <option value="Esquerda">Esquerda</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field" id="auto-custom-wrap" hidden>
+                <label class="field-label" for="auto-type-custom">Nome do autônomo</label>
+                <input type="text" id="auto-type-custom" placeholder="ex: Three ball rush" />
+              </div>
+
+              <div class="field">
+                <label class="field-label" for="auto-balls">Bolas acertadas</label>
+                <input type="number" id="auto-balls" min="0" step="1" placeholder="ex: 3" />
+              </div>
+
+              <div class="field">
+                <label class="field-label" for="auto-notes">Observações</label>
+                <textarea id="auto-notes" rows="3" placeholder="Notas sobre esta execução..."></textarea>
+              </div>
+
+              <button type="submit" class="btn-primary" id="auto-submit-btn">
+                <span id="auto-btn-text">Adicionar Autônomo</span>
+                <span id="auto-btn-spinner" class="spinner" hidden></span>
+              </button>
+
+              <p class="form-error" id="auto-form-error"></p>
+            </div>
+
+          </div>
+        </form>
+      </section>
+
+      <!-- AUTO GROUPS -->
+      <section id="auto-groups-section">
+        <div class="section-header">
+          <div class="section-title">
+            <h2>Autônomos</h2>
+            <span class="section-title-count" id="auto-groups-count">0</span>
+          </div>
+          <div class="filter-bar">
+            <select id="auto-filter-type">
+              <option value="">Todos os tipos</option>
+              <option value="Double sweep">Double sweep</option>
+              <option value="Double sweep climb">Double sweep climb</option>
+              <option value="Depot">Depot</option>
+              <option value="Center">Center</option>
+            </select>
+            <select id="auto-filter-side">
+              <option value="">Ambos os lados</option>
+              <option value="Direita">Direita</option>
+              <option value="Esquerda">Esquerda</option>
+            </select>
+          </div>
+        </div>
+        <div id="auto-groups-container">
+          <div class="empty-state">
+            <div class="empty-state-icon">⏳</div>
+            <p>Carregando autônomos...</p>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /tab-auto -->
+
   </main>
 
   <footer>

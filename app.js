@@ -69,6 +69,7 @@ let selectedFile   = null;
 let allSamples     = [];
 let pendingDeleteId = null;
 let pendingDeleteStoragePath = null;
+let pendingDeleteCollection = 'samples';  // 'samples' or 'autos'
 let editingId = null;              // when set, submit does update instead of add
 let editingStoragePath = null;     // existing video path of the sample being edited
 let editingVideoURL = null;        // existing video url of the sample being edited
@@ -561,12 +562,14 @@ deleteCancel.addEventListener('click', () => {
   deleteModal.hidden = true;
   pendingDeleteId = null;
   pendingDeleteStoragePath = null;
+  pendingDeleteCollection = 'samples';
 });
 
 deleteBackdrop.addEventListener('click', () => {
   deleteModal.hidden = true;
   pendingDeleteId = null;
   pendingDeleteStoragePath = null;
+  pendingDeleteCollection = 'samples';
 });
 
 deleteConfirm.addEventListener('click', async () => {
@@ -574,7 +577,7 @@ deleteConfirm.addEventListener('click', async () => {
   deleteModal.hidden = true;
 
   try {
-    await deleteDoc(doc(db, 'samples', pendingDeleteId));
+    await deleteDoc(doc(db, pendingDeleteCollection, pendingDeleteId));
     if (pendingDeleteStoragePath) {
       try { await deleteObject(storageRef(stor, pendingDeleteStoragePath)); } catch {}
     }
@@ -584,6 +587,7 @@ deleteConfirm.addEventListener('click', async () => {
   } finally {
     pendingDeleteId = null;
     pendingDeleteStoragePath = null;
+    pendingDeleteCollection = 'samples';
   }
 });
 
@@ -594,3 +598,470 @@ document.addEventListener('keydown', e => {
     deleteModal.hidden = true;
   }
 });
+
+// ════════════════════════════════════════════════════════════════
+//  TABS
+// ════════════════════════════════════════════════════════════════
+const tabButtons = document.querySelectorAll('.tab');
+const tabPanels  = document.querySelectorAll('.tab-panel');
+const heroTitle  = document.getElementById('hero-title');
+const heroDesc   = document.getElementById('hero-desc');
+
+const heroContent = {
+  cadence: {
+    title: 'Meça e otimize a cadência do seu robô',
+    desc:  'Faça upload de vídeos curtos, registre tempos e quantidades, e descubra automaticamente qual configuração entrega o melhor BPS.'
+  },
+  auto: {
+    title: 'Acompanhe a performance do seu autônomo',
+    desc:  'Registre cada execução do autônomo e veja a média de bolas acertadas por tipo e lado.'
+  }
+};
+
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+    tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+    heroTitle.textContent = heroContent[tab].title;
+    heroDesc.textContent  = heroContent[tab].desc;
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  AUTO TAB
+// ════════════════════════════════════════════════════════════════
+
+// ── DOM refs ────────────────────────────────────────────────────
+const autoUploadArea    = document.getElementById('auto-upload-area');
+const autoVideoInput    = document.getElementById('auto-video-input');
+const autoVideoPreview  = document.getElementById('auto-video-preview');
+const autoUploadPH      = document.getElementById('auto-upload-placeholder');
+const autoRemoveBtn     = document.getElementById('auto-remove-video');
+const autoProgressWrap  = document.getElementById('auto-progress-wrap');
+const autoProgressBar   = document.getElementById('auto-progress-bar');
+const autoProgressLabel = document.getElementById('auto-progress-label');
+
+const autoType       = document.getElementById('auto-type');
+const autoTypeCustom = document.getElementById('auto-type-custom');
+const autoCustomWrap = document.getElementById('auto-custom-wrap');
+const autoSide       = document.getElementById('auto-side');
+const autoBalls      = document.getElementById('auto-balls');
+const autoNotes      = document.getElementById('auto-notes');
+
+const autoForm      = document.getElementById('auto-form');
+const autoSubmitBtn = document.getElementById('auto-submit-btn');
+const autoBtnText   = document.getElementById('auto-btn-text');
+const autoBtnSpin   = document.getElementById('auto-btn-spinner');
+const autoFormError = document.getElementById('auto-form-error');
+
+const autoFilterType = document.getElementById('auto-filter-type');
+const autoFilterSide = document.getElementById('auto-filter-side');
+const autoGroupsContainer = document.getElementById('auto-groups-container');
+const autoGroupsCount     = document.getElementById('auto-groups-count');
+
+const autoCardTitle = document.getElementById('auto-card-title');
+const autoCardIcon  = document.getElementById('auto-card-icon');
+const autoAddSection = document.getElementById('auto-add-section');
+
+// cancel-edit btn for auto
+const autoCancelEditBtn = document.createElement('button');
+autoCancelEditBtn.type = 'button';
+autoCancelEditBtn.className = 'btn-secondary';
+autoCancelEditBtn.textContent = '✕ Cancelar edição';
+autoCancelEditBtn.style.marginLeft = 'auto';
+autoCancelEditBtn.hidden = true;
+autoAddSection.querySelector('.card-header').appendChild(autoCancelEditBtn);
+autoCancelEditBtn.addEventListener('click', cancelAutoEdit);
+
+// ── State ───────────────────────────────────────────────────────
+let autoSelectedFile   = null;
+let allAutos           = [];
+let autoEditingId      = null;
+let autoEditingStoragePath = null;
+let autoEditingVideoURL = null;
+let autoReplaceVideo   = false;
+
+// ── "Outro" toggle ──────────────────────────────────────────────
+autoType.addEventListener('change', () => {
+  const isCustom = autoType.value === '__custom__';
+  autoCustomWrap.hidden = !isCustom;
+  if (!isCustom) autoTypeCustom.value = '';
+});
+
+// ── Upload area ─────────────────────────────────────────────────
+autoUploadArea.addEventListener('click', () => autoVideoInput.click());
+
+autoUploadArea.addEventListener('dragover', e => {
+  e.preventDefault();
+  autoUploadArea.classList.add('drag-over');
+});
+autoUploadArea.addEventListener('dragleave', () => autoUploadArea.classList.remove('drag-over'));
+autoUploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  autoUploadArea.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('video/')) setAutoVideoFile(f);
+});
+
+autoVideoInput.addEventListener('change', () => {
+  if (autoVideoInput.files[0]) setAutoVideoFile(autoVideoInput.files[0]);
+});
+
+function setAutoVideoFile(file) {
+  if (file.size > 200 * 1024 * 1024) {
+    toast('Vídeo muito grande (máx. 200 MB)', 'error');
+    return;
+  }
+  autoSelectedFile = file;
+  if (autoEditingId) autoReplaceVideo = true;
+  autoUploadPH.style.display     = 'none';
+  autoVideoPreview.style.display = 'block';
+  autoRemoveBtn.style.display    = 'block';
+  autoRemoveBtn.textContent      = autoEditingId ? '↺ Reverter vídeo' : '✕ Remover vídeo';
+  autoVideoPreview.src = URL.createObjectURL(file);
+}
+
+autoRemoveBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (autoEditingId && autoReplaceVideo) {
+    autoReplaceVideo = false;
+    autoSelectedFile = null;
+    autoVideoInput.value = '';
+    if (autoEditingVideoURL) {
+      autoVideoPreview.src = autoEditingVideoURL;
+      autoRemoveBtn.textContent = '🔄 Substituir vídeo';
+    } else {
+      clearAutoVideoSelection();
+    }
+    return;
+  }
+  clearAutoVideoSelection();
+});
+
+function clearAutoVideoSelection() {
+  autoSelectedFile             = null;
+  autoVideoInput.value         = '';
+  autoVideoPreview.src         = '';
+  autoVideoPreview.style.display = 'none';
+  autoUploadPH.style.display   = 'flex';
+  autoRemoveBtn.style.display  = 'none';
+}
+
+// ── Submit ──────────────────────────────────────────────────────
+autoForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  autoFormError.textContent = '';
+
+  let type = autoType.value;
+  if (!type) return (autoFormError.textContent = 'Selecione o tipo de autônomo.');
+  if (type === '__custom__') {
+    const custom = autoTypeCustom.value.trim();
+    if (!custom) return (autoFormError.textContent = 'Digite o nome do autônomo.');
+    type = custom;
+  }
+
+  const side  = autoSide.value;
+  const balls = parseInt(autoBalls.value);
+  const notes = autoNotes.value.trim();
+
+  if (!side)                      return (autoFormError.textContent = 'Selecione o lado.');
+  if (isNaN(balls) || balls < 0)  return (autoFormError.textContent = 'Informe a quantidade de bolas acertadas.');
+
+  setAutoLoading(true);
+
+  try {
+    if (autoEditingId) {
+      let videoURL    = autoEditingVideoURL;
+      let storagePath = autoEditingStoragePath;
+
+      if (autoReplaceVideo && autoSelectedFile) {
+        const path   = `autos/${Date.now()}_${autoSelectedFile.name}`;
+        const newURL = await uploadAutoVideo(autoSelectedFile, path);
+        if (autoEditingStoragePath) {
+          try { await deleteObject(storageRef(stor, autoEditingStoragePath)); } catch {}
+        }
+        storagePath = path;
+        videoURL    = newURL;
+      }
+
+      await updateDoc(doc(db, 'autos', autoEditingId), {
+        type, side, balls, notes,
+        videoURL, storagePath,
+        updatedAt: serverTimestamp()
+      });
+
+      toast('Autônomo atualizado!');
+      exitAutoEditMode();
+      autoForm.reset();
+      clearAutoVideoSelection();
+      autoCustomWrap.hidden = true;
+    } else {
+      let videoURL    = null;
+      let storagePath = null;
+
+      if (autoSelectedFile) {
+        const path  = `autos/${Date.now()}_${autoSelectedFile.name}`;
+        storagePath = path;
+        videoURL    = await uploadAutoVideo(autoSelectedFile, path);
+      }
+
+      await addDoc(collection(db, 'autos'), {
+        type, side, balls, notes,
+        videoURL, storagePath,
+        createdAt: serverTimestamp()
+      });
+
+      toast('Autônomo adicionado!');
+      autoForm.reset();
+      clearAutoVideoSelection();
+      autoCustomWrap.hidden = true;
+    }
+  } catch (err) {
+    console.error(err);
+    toast('Erro ao salvar: ' + err.message, 'error');
+  } finally {
+    setAutoLoading(false);
+    autoProgressWrap.classList.remove('active');
+    autoProgressBar.style.setProperty('--pct', '0%');
+    autoProgressLabel.textContent = '0%';
+  }
+});
+
+function setAutoLoading(on) {
+  autoSubmitBtn.disabled = on;
+  autoBtnText.hidden     = on;
+  autoBtnSpin.hidden     = !on;
+}
+
+function uploadAutoVideo(file, path) {
+  return new Promise((resolve, reject) => {
+    const ref  = storageRef(stor, path);
+    const task = uploadBytesResumable(ref, file);
+    autoProgressWrap.classList.add('active');
+
+    task.on('state_changed',
+      snap => {
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+        autoProgressBar.style.setProperty('--pct', pct + '%');
+        autoProgressLabel.textContent = pct + '%';
+      },
+      reject,
+      async () => resolve(await getDownloadURL(task.snapshot.ref))
+    );
+  });
+}
+
+// ── Edit mode ───────────────────────────────────────────────────
+function startAutoEdit(a) {
+  autoEditingId          = a.id;
+  autoEditingStoragePath = a.storagePath ?? null;
+  autoEditingVideoURL    = a.videoURL ?? null;
+  autoReplaceVideo       = false;
+
+  // Populate type: if it's one of the preset options use it, else use "Outro"
+  const presets = ['Double sweep', 'Double sweep climb', 'Depot', 'Center'];
+  if (presets.includes(a.type)) {
+    autoType.value = a.type;
+    autoCustomWrap.hidden = true;
+    autoTypeCustom.value = '';
+  } else {
+    autoType.value = '__custom__';
+    autoCustomWrap.hidden = false;
+    autoTypeCustom.value = a.type ?? '';
+  }
+
+  autoSide.value  = a.side ?? '';
+  autoBalls.value = a.balls ?? '';
+  autoNotes.value = a.notes ?? '';
+
+  autoSelectedFile = null;
+  autoVideoInput.value = '';
+  if (a.videoURL) {
+    autoUploadPH.style.display      = 'none';
+    autoVideoPreview.style.display  = 'block';
+    autoVideoPreview.src            = a.videoURL;
+    autoRemoveBtn.style.display     = 'block';
+    autoRemoveBtn.textContent       = '🔄 Substituir vídeo';
+  } else {
+    clearAutoVideoSelection();
+  }
+
+  autoCardTitle.textContent = 'Editando Autônomo';
+  autoCardIcon.textContent  = '✏️';
+  autoBtnText.textContent   = 'Salvar alterações';
+  autoCancelEditBtn.hidden  = false;
+  autoAddSection.classList.add('editing');
+
+  autoAddSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function exitAutoEditMode() {
+  autoEditingId          = null;
+  autoEditingStoragePath = null;
+  autoEditingVideoURL    = null;
+  autoReplaceVideo       = false;
+
+  autoCardTitle.textContent = 'Novo Autônomo';
+  autoCardIcon.textContent  = '＋';
+  autoBtnText.textContent   = 'Adicionar Autônomo';
+  autoRemoveBtn.textContent = '✕ Remover vídeo';
+  autoCancelEditBtn.hidden  = true;
+  autoAddSection.classList.remove('editing');
+}
+
+function cancelAutoEdit() {
+  exitAutoEditMode();
+  autoForm.reset();
+  clearAutoVideoSelection();
+  autoCustomWrap.hidden = true;
+  autoFormError.textContent = '';
+}
+
+// ── Realtime listener ───────────────────────────────────────────
+onSnapshot(collection(db, 'autos'), snap => {
+  allAutos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderAutoGroups();
+});
+
+autoFilterType.addEventListener('change', renderAutoGroups);
+autoFilterSide.addEventListener('change', renderAutoGroups);
+
+function renderAutoGroups() {
+  const ft = autoFilterType.value;
+  const fs = autoFilterSide.value;
+
+  let list = allAutos.filter(a =>
+    (!ft || a.type === ft) &&
+    (!fs || a.side === fs)
+  );
+
+  list.sort((a, b) => {
+    const ta = a.createdAt?.seconds ?? 0;
+    const tb = b.createdAt?.seconds ?? 0;
+    return tb - ta;
+  });
+
+  if (list.length === 0) {
+    autoGroupsCount.textContent = '0';
+    autoGroupsContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🤖</div>
+        <p>Nenhum autônomo registrado. Adicione o primeiro acima!</p>
+      </div>`;
+    return;
+  }
+
+  // Group by type + side
+  const groups = {};
+  for (const a of list) {
+    const key = `${a.type}__${a.side}`;
+    if (!groups[key]) groups[key] = { type: a.type, side: a.side, items: [] };
+    groups[key].items.push(a);
+  }
+
+  const sorted = Object.values(groups).sort((a, b) => avgBalls(b) - avgBalls(a));
+
+  autoGroupsCount.textContent = sorted.length;
+  autoGroupsContainer.innerHTML = '';
+  sorted.forEach((g, idx) => autoGroupsContainer.appendChild(buildAutoGroupCard(g, idx + 1)));
+}
+
+function avgBalls(group) {
+  const sum = group.items.reduce((acc, a) => acc + (a.balls ?? 0), 0);
+  return sum / group.items.length;
+}
+
+function buildAutoGroupCard(group, rank) {
+  const avg   = avgBalls(group).toFixed(2);
+  const count = group.items.length;
+  const rankDisplay = rank === 1 ? '🏆' : `#${rank}`;
+
+  const card = document.createElement('div');
+  card.className = `group-card rank-${rank}`;
+
+  card.innerHTML = `
+    <div class="group-header">
+      <div class="group-rank">${rankDisplay}</div>
+      <div class="group-tags">
+        <span class="tag tag-type">🤖 ${escapeHTML(group.type)}</span>
+        <span class="tag tag-side">${group.side === 'Direita' ? '➡' : '⬅'} ${group.side}</span>
+      </div>
+      <span class="group-count">${count} execuç${count !== 1 ? 'ões' : 'ão'}</span>
+      <div class="group-avg">
+        <span class="group-avg-label">Média bolas</span>
+        <span class="group-avg-value">${avg}</span>
+        <span class="group-avg-unit">acertos</span>
+      </div>
+    </div>
+    <ul class="sample-list"></ul>
+  `;
+
+  const ul = card.querySelector('.sample-list');
+  for (const item of group.items) ul.appendChild(buildAutoItem(item));
+
+  return card;
+}
+
+function buildAutoItem(a) {
+  const li = document.createElement('li');
+  li.className = 'sample-item';
+
+  const date = a.createdAt?.seconds
+    ? new Date(a.createdAt.seconds * 1000).toLocaleDateString('pt-BR',
+        { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  const thumbHTML = a.videoURL
+    ? `<div class="sample-thumb" data-url="${a.videoURL}" title="Assistir vídeo">
+         <video src="${a.videoURL}#t=0.1" preload="metadata" muted playsinline></video>
+         <span class="play-icon">▶</span>
+       </div>`
+    : `<div class="sample-thumb" style="cursor:default"><span class="sample-no-video">🎥</span></div>`;
+
+  li.innerHTML = `
+    ${thumbHTML}
+    <div class="sample-info">
+      <div class="sample-stats">
+        <span class="stat-chip bps"><strong>${a.balls ?? 0}</strong> bolas</span>
+      </div>
+      ${a.notes ? `<p class="sample-notes" title="${escapeHTML(a.notes)}">📝 ${escapeHTML(a.notes)}</p>` : ''}
+      <span class="sample-date">${date}</span>
+    </div>
+    <div class="sample-actions">
+      ${a.videoURL ? `<button class="btn-icon" data-play="${a.videoURL}" title="Assistir">▶</button>` : ''}
+      <button class="btn-icon" data-edit title="Editar">✏️</button>
+      <button class="btn-icon danger" data-delete title="Excluir">🗑</button>
+    </div>
+  `;
+
+  const thumb = li.querySelector('.sample-thumb[data-url]');
+  if (thumb) thumb.addEventListener('click', () => openVideoModal(a.videoURL));
+
+  const playBtn = li.querySelector('[data-play]');
+  if (playBtn) playBtn.addEventListener('click', () => openVideoModal(a.videoURL));
+
+  const editBtn = li.querySelector('[data-edit]');
+  if (editBtn) editBtn.addEventListener('click', () => startAutoEdit(a));
+
+  const delBtn = li.querySelector('[data-delete]');
+  if (delBtn) {
+    delBtn.addEventListener('click', () => {
+      pendingDeleteId          = a.id;
+      pendingDeleteStoragePath = a.storagePath ?? null;
+      pendingDeleteCollection  = 'autos';
+      deleteModal.hidden       = false;
+    });
+  }
+
+  if (autoEditingId === a.id) li.classList.add('editing-sample');
+
+  return li;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+function escapeHTML(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
